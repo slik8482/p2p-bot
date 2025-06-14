@@ -2,7 +2,6 @@
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 
-// === CONFIG ===
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
@@ -10,7 +9,6 @@ const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
 
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
-// === GET P2P OFFERS ===
 async function fetchBinanceOffers() {
     const url = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search';
     const body = {
@@ -38,7 +36,6 @@ async function fetchBinanceOffers() {
     }
 }
 
-// === SEND TO TELEGRAM ===
 async function sendTelegramPush(text) {
     try {
         await bot.sendMessage(TELEGRAM_CHAT_ID, text, { parse_mode: 'HTML' });
@@ -47,7 +44,6 @@ async function sendTelegramPush(text) {
     }
 }
 
-// === MAIN LOGIC ===
 async function mainLoop() {
     const offers = await fetchBinanceOffers();
     for (let offer of offers) {
@@ -57,8 +53,7 @@ async function mainLoop() {
 Курс: <b>${adv.price} UAH</b>
 Банк: ${adv.tradeMethods.map(m => m.identifier).join(', ')}
 Лимит: ${adv.minSingleTransAmount} – ${adv.maxSingleTransAmount} грн
-Продавец: ${advertiser.nickName}
-`;
+Продавец: ${advertiser.nickName}`;
         await sendTelegramPush(msg);
     }
 }
