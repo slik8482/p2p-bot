@@ -64,13 +64,13 @@ async function mainLoop() {
         const roi = (profit / price) * 100;
         const profitUah = profit * 200;
 
-        let roiText = `<span class="green">+${roi.toFixed(2)}%</span>`;
-        if (roi < 1.5 && roi >= 0.5) roiText = `<span class="orange">~${roi.toFixed(2)}%</span>`;
-        if (roi < 0.5) roiText = `<span class="red">${roi.toFixed(2)}%</span>`;
+      let roiEmoji = "🟢";
+if (roi < 1.5 && roi >= 0.5) roiEmoji = "🟡";
+if (roi < 0.5) roiEmoji = "🔴";
 
-        if (roi < 1) continue; // Фильтруем по ROI
+if (roi < 1) continue; // фильтр по ROI
 
-        const msg = `
+const msg = `
 📌 <b>Могу купить</b>
 💵 <b>Курс:</b> ${price} UAH
 🏦 <b>Банк продавца:</b> ${adv.tradeMethods.map(m => m.identifier).join(', ')}
@@ -78,10 +78,11 @@ async function mainLoop() {
 👤 <b>Продавец:</b> ${advertiser.nickName}
 
 🔁 <b>Связка:</b> Купил за ${price} через ${adv.tradeMethods[0]?.identifier} ➜ Продал за ${marketSellPrice} через Wise  
-📈 <b>Профит:</b> <b>${roiText}</b> (~${profitUah.toFixed(0)} грн с $200)
+📈 <b>Профит:</b> ${roiEmoji} <b>+${roi.toFixed(2)}%</b> (~${profitUah.toFixed(0)} грн с $200)
 
 🔗 <a href="https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${advertiser.userNo}">Открыть оффер в Binance</a>
 `;
+
 
         await sendTelegramPush(msg);
     }
