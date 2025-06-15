@@ -1,4 +1,3 @@
-
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
@@ -35,7 +34,7 @@ async function fetchBinanceOffers() {
         const response = await axios.post(url, body, { headers });
         return response.data.data || [];
     } catch (err) {
-        console.error("Ошибка при получении офферов:", err.message);
+        console.error(\"Ошибка при получении офферов:\", err.message);
         return [];
     }
 }
@@ -44,50 +43,44 @@ async function sendTelegramPush(text) {
     try {
         await bot.sendMessage(TELEGRAM_CHAT_ID, text, { parse_mode: 'HTML' });
     } catch (err) {
-        console.error("Ошибка отправки в Telegram:", err.message);
+        console.error(\"Ошибка отправки в Telegram:\", err.message);
     }
 }
 
-
 async function mainLoop() {
     const offers = await fetchBinanceOffers();
-
-    const marketSellPrice = 42.30; // 💡 Заменить на актуальную цену продажи (в будущем автоматизируем)
-    const uahBudget = 200 * parseFloat(offers[0]?.adv?.price || 41.5);
+    const marketSellPrice = 42.30;
 
     for (let offer of offers) {
         const adv = offer.adv;
         const advertiser = offer.advertiser;
-
         const price = parseFloat(adv.price);
         const profit = marketSellPrice - price;
         const roi = (profit / price) * 100;
         const profitUah = profit * 200;
 
-      let roiEmoji = "🟢";
-if (roi < 1.5 && roi >= 0.5) roiEmoji = "🟡";
-if (roi < 0.5) roiEmoji = "🔴";
+        let roiEmoji = \"🟢\";
+        if (roi < 1.5 && roi >= 0.5) roiEmoji = \"🟡\";
+        if (roi < 0.5) roiEmoji = \"🔴\";
 
-if (roi < 1) continue; // фильтр по ROI
+        if (roi < 1) continue;
 
-const msg = `
+        const msg = `
 📌 <b>Могу купить</b>
 💵 <b>Курс:</b> ${price} UAH
 🏦 <b>Банк продавца:</b> ${adv.tradeMethods.map(m => m.identifier).join(', ')}
 💳 <b>Лимит:</b> ${adv.minSingleTransAmount} – ${adv.maxSingleTransAmount} грн
 👤 <b>Продавец:</b> ${advertiser.nickName}
 
-🔁 <b>Связка:</b> Купил за ${price} через ${adv.tradeMethods[0]?.identifier} ➜ Продал за ${marketSellPrice} через Wise  
+🔁 <b>Связка:</b> Купил за ${price} через ${adv.tradeMethods[0]?.identifier} ➜ Продал за ${marketSellPrice} через Wise
 📈 <b>Профит:</b> ${roiEmoji} <b>+${roi.toFixed(2)}%</b> (~${profitUah.toFixed(0)} грн с $200)
 
-🔗 <a href="https://p2p.binance.com/ru/trade/all-payments/USDT/UAH?tradeType=BUY&fiat=UAH&asset=USDT&merchant=${advertiser.nickName}">Открыть оффер в Binance</a>
-
-
+🔗 <a href=\"https://p2p.binance.com/ru/trade/all-payments/USDT/UAH?tradeType=BUY&fiat=UAH&asset=USDT&merchant=${advertiser.nickName}\">Открыть оффер в Binance</a>
+        `;
 
         await sendTelegramPush(msg);
     }
 }
-
 
 app.get('/', (_, res) => res.send('P2P bot is running!'));
 app.listen(PORT, () => {
