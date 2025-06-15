@@ -2,23 +2,25 @@ const express = require('express');
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
 
-// Конфигурация – токен бота и чат-ID должны быть заданы в переменных окружения
+// === Конфигурация ===
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
-const SELL_RATE = 42.30;  // фиксированный курс продажи USDT за UAH
+const SELL_RATE = 42.30;
+const ALLOWED_BANKS = ['Monobank', 'Izibank', 'А-Банк', 'ПУМБ'];
+const MIN_LIMIT = 3000;
+const MAX_LIMIT = 10000;
 
-// Инициализация Express-заглушки для Render
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is running'));
 app.listen(PORT, () => {
-    console.log(`Express server listening on port ${PORT}`);
+    console.log(`✅ Express server listening on port ${PORT}`);
+    mainLoop();
+    setInterval(mainLoop, 60000);
 });
 
-// Инициализация Telegram Bot API
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-// Функция основного цикла
 async function mainLoop() {
     try {
         console.log('🔄 Получение офферов с Binance P2P...');
@@ -30,13 +32,15 @@ async function mainLoop() {
             tradeType: 'BUY',
             publisherType: null
         };
-        const response = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', payload, {
-            headers: { 'Content-Type': 'application/json' }
-        });
+
+        const response = await axios.post(
+            'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search',
+            payload,
+            { headers: { 'Content-Type': 'application/json' } }
+        );
 
         const data = response.data;
         if (!data || !data.success) return;
-
         const offers = data.data;
 
         for (const offer of offers) {
@@ -49,10 +53,8 @@ async function mainLoop() {
             const payMethods = adv.tradeMethods.map(m => m.tradeMethodName);
             const sellerName = advertiser.nickName;
 
-            // 🔍 Проверка лимита
             if (minLimit > MAX_LIMIT || maxLimit < MIN_LIMIT) continue;
 
-            // 🔍 Проверка банков
             const matchedBanks = payMethods.filter(bank =>
                 ALLOWED_BANKS.some(allowed => bank.toLowerCase().includes(allowed.toLowerCase()))
             );
@@ -62,86 +64,29 @@ async function mainLoop() {
             const profit = SELL_RATE - price;
             if (roi <= 1) continue;
 
-            let roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
+            const roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
+
             const msg = 
-                `Могу купить USDT за <b>${price.toFixed(2)}₴</b> (${matchedBanks.join(', ')})` +
-                `, лимит <b>${minLimit}-${maxLimit}₴</b>` +
-                `, продавец <b>${sellerName}</b>` +
-                `, ROI: ${roiEmoji} <b>${roi.toFixed(1)}%</b> +${profit.toFixed(2)}₴` +
-                `, <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(sellerName)}">Binance</a>`;
+                `📌 <b>Могу купить</b>\n` +
+                `💵 <b>Курс:</b> ${price.toFixed(2)} UAH\n` +
+                `🏦 <b>Банк:</b> ${matchedBanks.join(', ')}\n` +
+                `💳 <b>Лимит:</b> ${minLimit} – ${maxLimit} грн\n` +
+                `👤 <b>Продавец:</b> ${sellerName}\n\n` +
+                `🔁 <b>Связка:</b> ${price.toFixed(2)} ➜ ${SELL_RATE}\n` +
+                `📈 <b>Профит:</b> ${roiEmoji} <b>+${roi.toFixed(1)}%</b> (~${(profit * 200).toFixed(0)} грн с $200)\n` +
+                `🔗 <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(sellerName)}">Открыть оффер</a>`;
 
             try {
-                await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
+                await bot.sendMessage(CHAT_ID, msg, {
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
+                });
                 console.log(`✅ Отправлено: ${sellerName}, ROI ${roi.toFixed(1)}%`);
             } catch (err) {
                 console.error('❌ Telegram error:', err.message);
             }
         }
     } catch (err) {
-        console.error('❌ Ошибка в mainLoop:', err.message);
+        console.error('❌ Ошибка mainLoop:', err.message);
     }
 }
-
-
-        // Обработка каждого оффера
-        for (const offer of offers) {
-            const adv = offer.adv;
-            const advertiser = offer.advertiser;
-            // Извлекаем необходимые данные
-            const price = parseFloat(adv.price);  // цена покупки USDT (UAH за 1 USDT)
-            const minLimit = parseFloat(adv.minSingleTransAmount);
-            const maxLimit = parseFloat(adv.maxSingleTransAmount);
-            const payMethods = adv.tradeMethods.map(m => m.tradeMethodName);
-            const sellerName = advertiser.nickName;
-
-            // Расчет ROI (%) и профита (UAH)
-            const roi = (SELL_RATE / price - 1) * 100;
-            const profit = SELL_RATE - price;
-
-            // Фильтрация: пропускаем офферы с ROI <= 1%
-            if (roi <= 1) {
-                continue;
-            }
-
-            // Определяем emoji для ROI по заданным порогам
-            let roiEmoji;
-            if (roi > 1.5) {
-                roiEmoji = '🟢';
-            } else if (roi >= 0.5 && roi <= 1.5) {
-                roiEmoji = '🟡';
-            } else {
-                roiEmoji = '🔴';
-            }
-
-            // Форматируем значения для сообщения
-            const priceStr = price.toFixed(2);        // курс покупки с двумя знаками после запятой
-            const minStr = Number.isInteger(minLimit) ? minLimit.toFixed(0) : minLimit.toFixed(2);
-            const maxStr = Number.isInteger(maxLimit) ? maxLimit.toFixed(0) : maxLimit.toFixed(2);
-            const roiStr = roi.toFixed(1);            // ROI с одним десятичным знаком
-            const profitStr = profit.toFixed(2);      // прибыль в грн с двумя знаками
-            const methodsStr = payMethods.join(', '); // перечисление способов оплаты
-
-            // Формируем текст сообщения с HTML-разметкой
-            const message = 
-                `Могу купить USDT за <b>${priceStr}₴</b> (${methodsStr})` +
-                `, лимит <b>${minStr}-${maxStr}₴</b>` +
-                `, продавец <b>${sellerName}</b>` +
-                `, ${priceStr}→${SELL_RATE.toFixed(2)}` +
-                `, ROI: ${roiEmoji} <b>${roiStr}%</b> +${profitStr}₴` +
-                `, <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(sellerName)}">Binance</a>`;
-
-            try {
-                await bot.sendMessage(CHAT_ID, message, { parse_mode: 'HTML', disable_web_page_preview: true });
-                console.log(`➡️ Отправлено уведомление в Telegram: продавец ${sellerName}, ROI ~${roiStr}%`);
-            } catch (err) {
-                console.error('Ошибка при отправке сообщения в Telegram:', err.message);
-            }
-        }
-    } catch (err) {
-        console.error('❌ Ошибка в основном цикле:', err.message);
-    }
-}
-
-// Запуск цикла обновления каждые 60 секунд
-mainLoop();  // первый запуск немедленно
-setInterval(mainLoop, 60000);
