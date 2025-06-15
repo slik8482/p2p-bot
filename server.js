@@ -80,8 +80,8 @@ const msg = `
 🔁 <b>Связка:</b> Купил за ${price} через ${adv.tradeMethods[0]?.identifier} ➜ Продал за ${marketSellPrice} через Wise  
 📈 <b>Профит:</b> ${roiEmoji} <b>+${roi.toFixed(2)}%</b> (~${profitUah.toFixed(0)} грн с $200)
 
-🔗 <a href="https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${advertiser.userNo}">Открыть оффер в Binance</a>
-`;
+🔗 <a href="https://p2p.binance.com/ru/trade/all-payments/USDT/UAH?tradeType=BUY&fiat=UAH&asset=USDT&merchant=${advertiser.nickName}">Открыть оффер в Binance</a>
+
 
 
         await sendTelegramPush(msg);
