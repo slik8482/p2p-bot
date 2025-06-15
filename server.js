@@ -87,6 +87,7 @@ async function mainLoop() {
     }
 }
 
+
 app.get('/', (_, res) => res.send('P2P bot is running!'));
 app.listen(PORT, () => {
     console.log(`Fake server running on port ${PORT}`);
