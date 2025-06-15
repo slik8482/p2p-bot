@@ -52,8 +52,8 @@ async function sendTelegramPush(text) {
 async function mainLoop() {
     const offers = await fetchBinanceOffers();
 
-    const marketSellPrice = 42.30; // Заменить на актуальный курс продажи (можно автоматизировать позже)
-    const uahBudget = 200 * parseFloat(offers[0]?.adv?.price || 41.5); // расчет гривневого эквивалента $200
+    const marketSellPrice = 42.30; // 💡 Заменить на актуальную цену продажи (в будущем автоматизируем)
+    const uahBudget = 200 * parseFloat(offers[0]?.adv?.price || 41.5);
 
     for (let offer of offers) {
         const adv = offer.adv;
@@ -62,13 +62,13 @@ async function mainLoop() {
         const price = parseFloat(adv.price);
         const profit = marketSellPrice - price;
         const roi = (profit / price) * 100;
-        const profitUah = (marketSellPrice - price) * 200;
+        const profitUah = profit * 200;
 
         let roiText = `<span class="green">+${roi.toFixed(2)}%</span>`;
         if (roi < 1.5 && roi >= 0.5) roiText = `<span class="orange">~${roi.toFixed(2)}%</span>`;
         if (roi < 0.5) roiText = `<span class="red">${roi.toFixed(2)}%</span>`;
 
-        if (roi < 1) continue; // фильтр: пушим только если ROI > 1%
+        if (roi < 1) continue; // Фильтруем по ROI
 
         const msg = `
 📌 <b>Могу купить</b>
@@ -83,13 +83,6 @@ async function mainLoop() {
 🔗 <a href="https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${advertiser.userNo}">Открыть оффер в Binance</a>
 `;
 
-        await sendTelegramPush(msg);
-    }
-}
- UAH</b>
-Банк: ${adv.tradeMethods.map(m => m.identifier).join(', ')}
-Лимит: ${adv.minSingleTransAmount} – ${adv.maxSingleTransAmount} грн
-Продавец: ${advertiser.nickName}`;
         await sendTelegramPush(msg);
     }
 }
