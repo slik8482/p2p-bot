@@ -1,6 +1,10 @@
 
 const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -58,5 +62,9 @@ async function mainLoop() {
     }
 }
 
-setInterval(mainLoop, 60 * 1000);
-mainLoop();
+app.get('/', (_, res) => res.send('P2P bot is running!'));
+app.listen(PORT, () => {
+    console.log(`Fake server running on port ${PORT}`);
+    setInterval(mainLoop, 60 * 1000);
+    mainLoop();
+});
