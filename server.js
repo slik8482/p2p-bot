@@ -22,29 +22,66 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 async function mainLoop() {
     try {
         console.log('🔄 Получение офферов с Binance P2P...');
-        // Запрос офферов (продающие USDT за UAH) через внутренний API Binance P2P
         const payload = {
             page: 1,
-            rows: 20,                // запрашиваем топ-20 предложений
+            rows: 20,
             asset: 'USDT',
             fiat: 'UAH',
             tradeType: 'BUY',
-            publisherType: null      // получаем офферы от всех продавцов (не только мерчантов)
+            publisherType: null
         };
         const response = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', payload, {
             headers: { 'Content-Type': 'application/json' }
         });
-        const data = response.data;
-        if (!data || !data.success) {
-            console.error('❌ Ошибка API Binance P2P или пустой ответ');
-            return;
-        }
-        const offers = data.data;  // массив офферов
 
-        console.log(`✅ Офферов получено: ${offers.length}`);
-        if (!offers.length) {
-            return;  // нет данных для обработки
+        const data = response.data;
+        if (!data || !data.success) return;
+
+        const offers = data.data;
+
+        for (const offer of offers) {
+            const adv = offer.adv;
+            const advertiser = offer.advertiser;
+
+            const price = parseFloat(adv.price);
+            const minLimit = parseFloat(adv.minSingleTransAmount);
+            const maxLimit = parseFloat(adv.maxSingleTransAmount);
+            const payMethods = adv.tradeMethods.map(m => m.tradeMethodName);
+            const sellerName = advertiser.nickName;
+
+            // 🔍 Проверка лимита
+            if (minLimit > MAX_LIMIT || maxLimit < MIN_LIMIT) continue;
+
+            // 🔍 Проверка банков
+            const matchedBanks = payMethods.filter(bank =>
+                ALLOWED_BANKS.some(allowed => bank.toLowerCase().includes(allowed.toLowerCase()))
+            );
+            if (matchedBanks.length === 0) continue;
+
+            const roi = (SELL_RATE / price - 1) * 100;
+            const profit = SELL_RATE - price;
+            if (roi <= 1) continue;
+
+            let roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
+            const msg = 
+                `Могу купить USDT за <b>${price.toFixed(2)}₴</b> (${matchedBanks.join(', ')})` +
+                `, лимит <b>${minLimit}-${maxLimit}₴</b>` +
+                `, продавец <b>${sellerName}</b>` +
+                `, ROI: ${roiEmoji} <b>${roi.toFixed(1)}%</b> +${profit.toFixed(2)}₴` +
+                `, <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(sellerName)}">Binance</a>`;
+
+            try {
+                await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
+                console.log(`✅ Отправлено: ${sellerName}, ROI ${roi.toFixed(1)}%`);
+            } catch (err) {
+                console.error('❌ Telegram error:', err.message);
+            }
         }
+    } catch (err) {
+        console.error('❌ Ошибка в mainLoop:', err.message);
+    }
+}
+
 
         // Обработка каждого оффера
         for (const offer of offers) {
