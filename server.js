@@ -1,111 +1,84 @@
-
+// server.js
 const express = require('express');
-const axios = require('axios');
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
-const START_USDT = 200;
+const SELL_RATE = 42.30;
 
-const ALLOWED_BANKS = ['monobank', 'izibank', 'a-bank', 'пумб'];
-const MIN_LIMIT = 3000;
-const MAX_LIMIT = 10000;
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+let mode = 'off'; // off, buy, sell
 
-const SELL_RATES = {
-    'monobank': 42.30,
-    'izibank': 42.25,
-    'a-bank': 42.20,
-    'пумб': 42.15
-};
+app.get('/', (req, res) => res.send('Bot is running'));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
-const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
-
-const bot = new TelegramBot(BOT_TOKEN, { polling: false });
-
-app.get('/', (_, res) => res.send('Bot is running'));
-app.listen(PORT, () => {
-    console.log(`✅ Server started on port ${PORT}`);
-    setInterval(mainLoop, 60000);
-    mainLoop();
+// Команда /start
+bot.onText(/\/start/, (msg) => {
+    const chatId = msg.chat.id;
+    const opts = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: 'Купить', callback_data: 'buy' }],
+                [{ text: 'Продать', callback_data: 'sell' }],
+                [{ text: 'Остановить', callback_data: 'stop' }]
+            ]
+        }
+    };
+    bot.sendMessage(chatId, 'Выберите действие:', opts);
 });
 
+// Обработка кнопок
+bot.on('callback_query', (query) => {
+    const chatId = query.message.chat.id;
+    if (query.data === 'buy') {
+        mode = 'buy';
+        bot.sendMessage(chatId, '✅ Мониторинг покупок включен');
+    } else if (query.data === 'sell') {
+        mode = 'sell';
+        bot.sendMessage(chatId, '✅ Мониторинг продаж включен');
+    } else if (query.data === 'stop') {
+        mode = 'off';
+        bot.sendMessage(chatId, '⛔ Пуши остановлены');
+    }
+});
+
+// Основной цикл
 async function mainLoop() {
+    if (mode === 'off') return;
     try {
-        console.log('🔄 Получение офферов...');
-        const payload = {
+        const response = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', {
             page: 1,
-            rows: 20,
+            rows: 10,
             asset: 'USDT',
             fiat: 'UAH',
-            tradeType: 'BUY',
-            publisherType: null
-        };
+            tradeType: mode === 'buy' ? 'BUY' : 'SELL'
+        }, { headers: { 'Content-Type': 'application/json' } });
 
-        const response = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', payload, {
-            headers: { 'Content-Type': 'application/json' }
-        });
-
-        const offers = response.data.data || [];
-
-        for (const offer of offers) {
+        const offers = response.data.data;
+        for (let offer of offers) {
             const adv = offer.adv;
             const advertiser = offer.advertiser;
-
             const price = parseFloat(adv.price);
-            const min = parseFloat(adv.minSingleTransAmount);
-            const max = parseFloat(adv.maxSingleTransAmount);
-            const methods = adv.tradeMethods.map(m => m.tradeMethodName.toLowerCase());
-            const seller = advertiser.nickName;
+            const roi = (SELL_RATE / price - 1) * 100;
+            if (roi < 1) continue;
 
-            if (min > MAX_LIMIT || max < MIN_LIMIT) continue;
-
-            const buyerBank = methods.find(m =>
-                ALLOWED_BANKS.some(b => m.includes(b))
-            );
-            if (!buyerBank) continue;
-
-            const sellBank = getBestSellBank();
-            const sellRate = SELL_RATES[sellBank];
-
-            const profit = sellRate - price;
-            const roi = (profit / price) * 100;
-            if (roi <= 1) continue;
-
-            const profitUah = profit * START_USDT;
-            const roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
-
-            const msg = `
-📌 <b>Могу купить</b>  
-💵 <b>Курс покупки:</b> ${price.toFixed(2)}₴  
-🏦 <b>Банк продавца:</b> ${buyerBank}  
-💳 <b>Лимит:</b> ${min} – ${max}₴  
-👤 <b>Продавец:</b> ${seller}
-
-🔁 <b>Связка:</b> Купил через <b>${buyerBank}</b> ➜ Продал через <b>${sellBank}</b> по <b>${sellRate.toFixed(2)}₴</b>  
-📈 <b>Профит:</b> ${roiEmoji} <b>+${roi.toFixed(2)}%</b> (~${profitUah.toFixed(0)}₴ с $${START_USDT})
-
-🔗 <a href="https://p2p.binance.com/ru/trade/all-payments/USDT/UAH?tradeType=BUY&fiat=UAH&asset=USDT&merchant=${encodeURIComponent(seller)}">Открыть оффер в Binance App</a>`;
-
+            const msg = `<b>Могу ${mode === 'buy' ? 'купить' : 'продать'} USDT</b>
+💵 Курс: <b>${price.toFixed(2)}₴</b>
+🏦 Банк: ${adv.tradeMethods.map(m => m.tradeMethodName).join(', ')}
+💳 Лимит: ${adv.minSingleTransAmount}–${adv.maxSingleTransAmount} грн
+👤 Продавец: <b>${advertiser.nickName}</b>
+📈 ROI: <b>${roi.toFixed(2)}%</b>
+🔗 <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(advertiser.nickName)}">Открыть в Binance</a>`;
             await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
-            console.log(`✅ Отправлен пуш: ${seller}, ROI ${roi.toFixed(2)}%`);
         }
     } catch (err) {
         console.error('❌ Ошибка:', err.message);
     }
 }
 
-function getBestSellBank() {
-    let best = null;
-    let max = 0;
-    for (const [bank, rate] of Object.entries(SELL_RATES)) {
-        if (rate > max) {
-            max = rate;
-            best = bank;
-        }
-    }
-    return best;
-}
+setInterval(mainLoop, 60000);
+mainLoop();
