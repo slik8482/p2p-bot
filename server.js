@@ -72,7 +72,7 @@ async function mainLoop() {
 💳 Лимит: ${adv.minSingleTransAmount}–${adv.maxSingleTransAmount} грн
 👤 Продавец: <b>${advertiser.nickName}</b>
 📈 ROI: <b>${roi.toFixed(2)}%</b>
-🔗 <a href="https://p2p.binance.com/ru/trade/buy/USDT?fiat=UAH&merchant=${encodeURIComponent(advertiser.nickName)}">Открыть в Binance</a>`;
+🔗 <a href="https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${advertiser.userNo}">Открыть продавца в Binance</a>;
             await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
         }
     } catch (err) {
