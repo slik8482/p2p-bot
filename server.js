@@ -18,16 +18,19 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 // Команда /start
 bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    const opts = {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: 'Купить', callback_data: 'buy' }],
-                [{ text: 'Продать', callback_data: 'sell' }],
-                [{ text: 'Остановить', callback_data: 'stop' }]
-            ]
-        }
-    };
+  const chatId = msg.chat.id;
+
+  bot.sendMessage(chatId, 'Выберите действие:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '🔼 Купить', callback_data: 'buy' }],
+        [{ text: '🔽 Продать', callback_data: 'sell' }],
+        [{ text: '⛔️ Остановить', callback_data: 'stop' }]
+      ]
+    }
+  });
+});
+
 bot.sendMessage(chatId, 'Выберите действие:', {
   reply_markup: {
     inline_keyboard: [
