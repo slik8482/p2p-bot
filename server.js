@@ -28,8 +28,16 @@ bot.onText(/\/start/, (msg) => {
             ]
         }
     };
-    bot.sendMessage(chatId, 'Выберите действие:', opts);
+bot.sendMessage(chatId, 'Выберите действие:', {
+  reply_markup: {
+    inline_keyboard: [
+      [{ text: '🔼 Купить', callback_data: 'buy' }],
+      [{ text: '🔽 Продать', callback_data: 'sell' }],
+      [{ text: '⛔️ Остановить', callback_data: 'stop' }]
+    ]
+  }
 });
+
 
 // Обработка кнопок
 bot.on('callback_query', (query) => {
