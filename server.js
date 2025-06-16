@@ -1,63 +1,87 @@
-// 📦 Зависимости
 const express = require('express');
 const axios = require('axios');
-const crypto = require('crypto');
 const TelegramBot = require('node-telegram-bot-api');
 
-// 🔑 Конфигурация через переменные окружения
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
-const BINANCE_API_KEY = process.env.BINANCE_API_KEY;
-const BINANCE_SECRET_KEY = process.env.BINANCE_SECRET_KEY;
 const SELL_RATE = 42.30;
 
-// 🧠 Telegram bot
-const bot = new TelegramBot(BOT_TOKEN, { polling: false });
+const MIN_LIMIT = 3000;
+const MAX_LIMIT = 10000;
+const ALLOWED_BANKS = ['monobank', 'izibank', 'a-bank', 'пумб', 'pumb', 'mono'];
 
-// 🌐 Express-заглушка
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.get('/', (_, res) => res.send('Binance Private API Bot is running'));
-app.listen(PORT, () => console.log(`✅ Express listening on ${PORT}`));
+app.get('/', (req, res) => res.send('Bot is running'));
+app.listen(PORT, () => {
+    console.log(`Express server listening on port ${PORT}`);
+});
 
-// 🔐 Создание подписи HMAC SHA256
-function sign(query, secret) {
-    return crypto.createHmac('sha256', secret).update(query).digest('hex');
-}
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-// 📊 Получение баланса аккаунта
-async function getBinanceBalance() {
-    const timestamp = Date.now();
-    const query = `timestamp=${timestamp}`;
-    const signature = sign(query, BINANCE_SECRET_KEY);
-    const url = `https://api.binance.com/api/v3/account?${query}&signature=${signature}`;
-
+async function mainLoop() {
     try {
-        const res = await axios.get(url, {
-            headers: { 'X-MBX-APIKEY': BINANCE_API_KEY }
+        console.log('🔄 Получение офферов с Binance P2P...');
+        const payload = {
+            page: 1,
+            rows: 20,
+            asset: 'USDT',
+            fiat: 'UAH',
+            tradeType: 'BUY',
+            publisherType: null
+        };
+        const response = await axios.post('https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search', payload, {
+            headers: { 'Content-Type': 'application/json' }
         });
-        return res.data.balances;
+
+        const data = response.data;
+        if (!data || !data.data) return;
+
+        const offers = data.data;
+
+        for (const offer of offers) {
+            const adv = offer.adv;
+            const advertiser = offer.advertiser;
+
+            const price = parseFloat(adv.price);
+            const minLimit = parseFloat(adv.minSingleTransAmount);
+            const maxLimit = parseFloat(adv.maxSingleTransAmount);
+            const payMethods = adv.tradeMethods.map(m => m.tradeMethodName.toLowerCase());
+            const sellerName = advertiser.nickName;
+            const userNo = advertiser.userNo;
+
+            if (minLimit > MAX_LIMIT || maxLimit < MIN_LIMIT) continue;
+
+            const matchedBanks = payMethods.filter(bank =>
+                ALLOWED_BANKS.some(allowed => bank.includes(allowed))
+            );
+            if (matchedBanks.length === 0) continue;
+
+            const roi = (SELL_RATE / price - 1) * 100;
+            const profit = SELL_RATE - price;
+            if (roi <= 1) continue;
+
+            const roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
+            const link = `binance://p2p?type=buy&fiat=UAH&asset=USDT&merchant=${userNo}`;
+
+            const msg = 
+                `Могу купить USDT за <b>${price.toFixed(2)}₴</b> (${matchedBanks.join(', ')})` +
+                `, лимит <b>${minLimit}-${maxLimit}₴</b>` +
+                `, продавец <b>${sellerName}</b>` +
+                `, ROI: ${roiEmoji} <b>${roi.toFixed(1)}%</b> +${profit.toFixed(2)}₴` +
+                `, <a href="${link}">Открыть в Binance App</a>`;
+
+            try {
+                await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
+                console.log(`✅ Отправлено: ${sellerName}, ROI ${roi.toFixed(1)}%`);
+            } catch (err) {
+                console.error('❌ Telegram error:', err.message);
+            }
+        }
     } catch (err) {
-        console.error('❌ Ошибка при получении баланса:', err.response?.data || err.message);
-        return [];
+        console.error('❌ Ошибка в mainLoop:', err.message);
     }
 }
 
-// 📤 Отправка баланса в Telegram
-async function sendBalanceToTelegram() {
-    const balances = await getBinanceBalance();
-    const usdt = balances.find(b => b.asset === 'USDT');
-    const btc = balances.find(b => b.asset === 'BTC');
-    const bnb = balances.find(b => b.asset === 'BNB');
-
-    const msg = `💰 <b>Баланс Binance</b>\n` +
-        `USDT: ${usdt?.free || 0}\n` +
-        `BTC: ${btc?.free || 0}\n` +
-        `BNB: ${bnb?.free || 0}`;
-
-    await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML' });
-}
-
-// 🚀 Запуск каждую минуту
-sendBalanceToTelegram();
-setInterval(sendBalanceToTelegram, 60_000);
+mainLoop();
+setInterval(mainLoop, 60000);
