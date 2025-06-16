@@ -1,4 +1,4 @@
-
+// server.js
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
@@ -10,7 +10,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
 const SELL_RATE = 42.30;
 
-const ALLOWED_BANKS = ['monobank', 'abank', 'pumb', 'izibank'];
+const ALLOWED_BANKS = ['Monobank', 'Izibank', 'ABank', 'PUMB'];
 const MIN_LIMIT = 3000;
 const MAX_LIMIT = 10000;
 
@@ -20,7 +20,7 @@ let mode = 'off';
 app.get('/', (req, res) => res.send('Bot is running'));
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// /start с кнопками
+// /start кнопки
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, 'Выберите действие:', {
@@ -44,11 +44,11 @@ bot.on('callback_query', (query) => {
     bot.sendMessage(chatId, '✅ Мониторинг продаж включен');
   } else if (query.data === 'stop') {
     mode = 'off';
-    bot.sendMessage(chatId, '⛔ Пуши остановлены');
+    bot.sendMessage(chatId, '⛔ Мониторинг остановлен');
   }
 });
 
-// цикл
+// Основной цикл
 async function mainLoop() {
   if (mode === 'off') return;
   try {
@@ -65,42 +65,37 @@ async function mainLoop() {
       const adv = offer.adv;
       const advertiser = offer.advertiser;
       const price = parseFloat(adv.price);
-      const min = parseFloat(adv.minSingleTransAmount);
-      const max = parseFloat(adv.maxSingleTransAmount);
-      const methods = adv.tradeMethods.map(m => m.tradeMethodName);
-      const seller = advertiser.nickName;
-      const userNo = advertiser.userNo;
+      const roi = (SELL_RATE / price - 1) * 100;
 
-      if (min > MAX_LIMIT || max < MIN_LIMIT) continue;
-      const matched = methods.filter(m => ALLOWED_BANKS.some(b => m.toLowerCase().includes(b)));
-      if (!matched.length) continue;
+      const minLimit = parseFloat(adv.minSingleTransAmount);
+      const maxLimit = parseFloat(adv.maxSingleTransAmount);
+      const payMethods = adv.tradeMethods.map(m => m.tradeMethodName);
 
-      const roi = ((SELL_RATE / price) - 1) * 100;
+      // фильтр по лимиту и банкам
+      if (minLimit > MAX_LIMIT || maxLimit < MIN_LIMIT) continue;
+      const matchedBanks = payMethods.filter(bank =>
+        ALLOWED_BANKS.some(allowed => bank.toLowerCase().includes(allowed.toLowerCase()))
+      );
+      if (matchedBanks.length === 0) continue;
+      if (roi < 1) continue;
+
       const profit = SELL_RATE - price;
-      if (roi <= 1) continue;
+      let roiEmoji = roi > 1.5 ? '🟢' : roi >= 0.5 ? '🟡' : '🔴';
 
-      const message = `
-📌 <b>Могу ${mode === 'buy' ? 'купить' : 'продать'} USDT</b>
-💵 <b>Курс:</b> ${price.toFixed(2)}₴
-🏦 <b>Банк продавца:</b> ${matched.join(', ')}
-💳 <b>Лимит:</b> ${min}–${max} грн
-👤 <b>Продавец:</b> ${seller}
-🔁 <b>Связка:</b> Купил через <u>${matched[0]}</u> ➜ Продал через <u>Monobank</u>
-📈 <b>ROI:</b> 🟢 ${roi.toFixed(2)}% (~${profit.toFixed(2)}₴)
-      `.trim();
+      const msg = `<b>Могу ${mode === 'buy' ? 'купить' : 'продать'} USDT</b>
+💵 Курс: <b>${price.toFixed(2)}₴</b>
+🏦 Банк: ${matchedBanks.join(', ')}
+💳 Лимит: ${minLimit}–${maxLimit} грн
+👤 Продавец: <b>${advertiser.nickName}</b>
 
-      await bot.sendMessage(CHAT_ID, message, {
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔗 Открыть оффер в Binance', url: `https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${userNo}` }]
-          ]
-        }
-      });
+🔁 Связка: ${mode === 'buy' ? `Купил за ${price.toFixed(2)} через ${matchedBanks[0]} ➜ Продал за ${SELL_RATE} через ${ALLOWED_BANKS[0]}` : `Купил за ${SELL_RATE} через ${ALLOWED_BANKS[0]} ➜ Продал за ${price.toFixed(2)} через ${matchedBanks[0]}`}
+📈 ROI: ${roiEmoji} <b>${roi.toFixed(2)}%</b> (~${profit.toFixed(2)}₴)
+🔗 <a href="https://p2p.binance.com/ru/advertiserDetail?advertiserNo=${advertiser.userNo}">Открыть продавца в Binance</a>`;
+
+      await bot.sendMessage(CHAT_ID, msg, { parse_mode: 'HTML', disable_web_page_preview: true });
     }
   } catch (err) {
-    console.error('❌ Ошибка:', err.message);
+    console.error('❌ Ошибка в mainLoop:', err.message);
   }
 }
 
